@@ -26,6 +26,7 @@
 #import "flutter/shell/platform/darwin/ios/framework/Source/FlutterTextInputPlugin.h"
 #import "flutter/shell/platform/darwin/ios/framework/Source/FlutterView.h"
 #import "flutter/shell/platform/darwin/ios/framework/Source/platform_message_response_darwin.h"
+#import "flutter/shell/platform/darwin/ios/framework/Source/vsync_waiter_ios.h"
 #import "flutter/shell/platform/darwin/ios/platform_view_ios.h"
 #import "flutter/shell/platform/embedder/embedder.h"
 
@@ -943,15 +944,21 @@ static flutter::PointerData::DeviceKind DeviceKindFromTouchType(UITouch* touch) 
     pointer_data.physical_delta_x = 0.0;
     pointer_data.physical_delta_y = 0.0;
 
+    flutter::Shell& shell = [_engine.get() shell];
+    auto vsync_waiter = std::shared_ptr<flutter::VsyncWaiter>(shell.GetVsyncWaiter());
+    auto vsync_waiter_ios = std::static_pointer_cast<flutter::VsyncWaiterIOS>(vsync_waiter);
+
     NSNumber* deviceKey = [NSNumber numberWithLongLong:pointer_data.device];
     // Track touches that began and not yet stopped so we can flush them
     // if the view controller goes away.
     switch (pointer_data.change) {
       case flutter::PointerData::Change::kDown:
+        vsync_waiter_ios->PreventPausing();
         [_ongoingTouches addObject:deviceKey];
         break;
       case flutter::PointerData::Change::kCancel:
       case flutter::PointerData::Change::kUp:
+        vsync_waiter_ios->ResumePausing();
         [_ongoingTouches removeObject:deviceKey];
         break;
       case flutter::PointerData::Change::kHover:

@@ -38,6 +38,13 @@ void VsyncWaiterIOS::AwaitVSync() {
   [client_.get() await];
 }
 
+void VsyncWaiterIOS::PreventPausing() {
+  [client_.get() preventPausing];
+}
+
+void VsyncWaiterIOS::ResumePausing() {
+  [client_.get() resumePausing];
+}
 // |VariableRefreshRateReporter|
 double VsyncWaiterIOS::GetRefreshRate() const {
   return [client_.get() getRefreshRate];
@@ -49,11 +56,14 @@ double VsyncWaiterIOS::GetRefreshRate() const {
   flutter::VsyncWaiter::Callback callback_;
   fml::scoped_nsobject<CADisplayLink> display_link_;
   double current_refresh_rate_;
+  bool can_pause_;
 }
 
 - (instancetype)initWithTaskRunner:(fml::RefPtr<fml::TaskRunner>)task_runner
                           callback:(flutter::VsyncWaiter::Callback)callback {
   self = [super init];
+
+  can_pause_ = true;
 
   if (self) {
     current_refresh_rate_ = [DisplayLinkManager displayRefreshRate];
@@ -66,7 +76,7 @@ double VsyncWaiterIOS::GetRefreshRate() const {
     [self setMaxRefreshRateIfEnabled];
 
     task_runner->PostTask([client = [self retain]]() {
-      [client->display_link_.get() addToRunLoop:[NSRunLoop currentRunLoop]
+      [client->display_link_.get() addToRunLoop:[NSRunLoop mainRunLoop]
                                         forMode:NSRunLoopCommonModes];
       [client release];
     });
@@ -90,6 +100,14 @@ double VsyncWaiterIOS::GetRefreshRate() const {
   } else if (@available(iOS 10.0, *)) {
     display_link_.get().preferredFramesPerSecond = maxFrameRate;
   }
+}
+
+- (void)preventPausing {
+  can_pause_ = false;
+}
+
+- (void)resumePausing {
+  can_pause_ = true;
 }
 
 - (void)await {
@@ -116,7 +134,9 @@ double VsyncWaiterIOS::GetRefreshRate() const {
   current_refresh_rate_ = round(1 / (frame_target_time - frame_start_time).ToSecondsF());
 
   recorder->RecordVsync(frame_start_time, frame_target_time);
-  display_link_.get().paused = YES;
+  if (can_pause_) {
+    display_link_.get().paused = YES;
+  }
   callback_(std::move(recorder));
 }
 
